@@ -1,0 +1,31 @@
+# BankOS Reporting Service — Default Configuration
+#
+# Override with environment variables:
+#   BANKOS__KAFKA__BROKERS=kafka:9092
+#   BANKOS__DB__PATH=/data/reports.db
+#
+# Or with a config/local.toml file (gitignored).
+
+[kafka]
+brokers = "localhost:9092"
+topic = "bankos.transaction.events"
+group_id = "reporting-service"
+# Replay from the beginning of the topic on first run.
+# After the first run, committed offsets are used.
+auto_offset_reset = "earliest"
+
+[db]
+# SQLite database path. Use ":memory:" for tests.
+path = "./bankos-reports.db"
+
+[account_service]
+base_url = "http://localhost:8081"
+# Optional: Bearer token for authenticated calls.
+# In production, use a service account token from Keycloak.
+# token = ""
+
+[reporting]
+# How many accounts to show in the "top accounts" report by default
+default_top_n = 10
+# Log level for the reporting binaries (overridden by RUST_LOG env var)
+log_level = "info"

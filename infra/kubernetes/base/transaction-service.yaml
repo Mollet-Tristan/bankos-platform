@@ -1,0 +1,153 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transaction-service
+  namespace: bankos
+  labels:
+    app: transaction-service
+    app.kubernetes.io/part-of: bankos-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: transaction-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: transaction-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: [transaction-service]
+                topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: transaction-service
+          image: bankos/transaction-service:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8082
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "kubernetes"
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: transaction-db-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: transaction-db-credentials
+                  key: password
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: bankos-config
+                  key: transaction-service.datasource-url
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              valueFrom:
+                configMapKeyRef:
+                  name: bankos-config
+                  key: kafka.bootstrap-servers
+            - name: ACCOUNT_SERVICE_URL
+              value: "http://account-service:8081"
+            - name: KEYCLOAK_JWKS_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: bankos-config
+                  key: keycloak.jwks-uri
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8082
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8082
+            initialDelaySeconds: 20
+            periodSeconds: 5
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8082
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-service
+  namespace: bankos
+  labels:
+    app: transaction-service
+spec:
+  type: ClusterIP
+  selector:
+    app: transaction-service
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: transaction-service-hpa
+  namespace: bankos
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: transaction-service
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: transaction-service-pdb
+  namespace: bankos
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: transaction-service

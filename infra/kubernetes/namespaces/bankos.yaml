@@ -1,0 +1,59 @@
+---
+# Namespace — BankOS platform workloads
+#
+# All BankOS services run in this namespace.
+# Separation from kube-system and other tenants.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bankos
+  labels:
+    app.kubernetes.io/part-of: bankos-platform
+    environment: production
+---
+# ResourceQuota — prevents runaway resource consumption
+#
+# ADR-016: We set hard limits at the namespace level to protect
+# the cluster from a misbehaving service consuming all resources.
+# Individual pods have their own requests/limits (see Deployments).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: bankos-quota
+  namespace: bankos
+spec:
+  hard:
+    # Compute
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    # Storage
+    requests.storage: 100Gi
+    # Objects
+    pods: "50"
+    services: "20"
+    secrets: "50"
+    configmaps: "50"
+---
+# LimitRange — default resource limits for pods that don't specify them
+#
+# Without this, a pod without resource limits can consume unlimited
+# node resources. Defence-in-depth against misconfigured deployments.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: bankos-limits
+  namespace: bankos
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "4"
+        memory: 4Gi

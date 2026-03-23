@@ -1,0 +1,113 @@
+# Prometheus configuration for BankOS Platform
+#
+# Scrapes all Spring Boot services via the annotations:
+#   prometheus.io/scrape: "true"
+#   prometheus.io/port: "<port>"
+#   prometheus.io/path: "/actuator/prometheus"
+#
+# Also scrapes Kafka (JMX exporter), Redis, and PostgreSQL exporters.
+#
+# ADR-017: We use Prometheus + Grafana over a SaaS solution (Datadog, New Relic)
+# because:
+#  - Open source — no per-host pricing
+#  - Self-hosted — financial data stays on-premise
+#  - Pull-based — services don't need outbound connectivity to a SaaS endpoint
+#  - Rich ecosystem (Kafka exporter, PostgreSQL exporter, etc.)
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: bankos-production
+    environment: production
+
+rule_files:
+  - /etc/prometheus/rules/*.yaml
+
+scrape_configs:
+
+  # ── BankOS Spring Boot services ─────────────────────────────────────────────
+  # Uses Kubernetes pod discovery with annotation-based filtering.
+  # Any pod with prometheus.io/scrape=true is automatically scraped.
+  - job_name: bankos-services
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [bankos]
+    relabel_configs:
+      # Keep only pods with scrape annotation
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      # Use the pod's declared port
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: (.+)
+        replacement: "${1}"
+      - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: (.+);(.+)
+        replacement: "$1:$2"
+        target_label: __address__
+      # Use the declared metrics path
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      # Add useful labels from pod metadata
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: replace
+        target_label: app
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: pod
+
+  # ── Kafka JMX Exporter ───────────────────────────────────────────────────────
+  - job_name: kafka
+    static_configs:
+      - targets: ["bankos-kafka-jmx-exporter:5556"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+
+  # ── PostgreSQL Exporter ───────────────────────────────────────────────────────
+  # One exporter per database (separate connection strings)
+  - job_name: postgres-accounts
+    static_configs:
+      - targets: ["postgres-exporter-accounts:9187"]
+    labels:
+      database: accounts
+
+  - job_name: postgres-transactions
+    static_configs:
+      - targets: ["postgres-exporter-transactions:9187"]
+    labels:
+      database: transactions
+
+  - job_name: postgres-notifications
+    static_configs:
+      - targets: ["postgres-exporter-notifications:9187"]
+    labels:
+      database: notifications
+
+  # ── Redis Exporter ────────────────────────────────────────────────────────────
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  # ── Kubernetes infrastructure ─────────────────────────────────────────────────
+  - job_name: kubernetes-nodes
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]

@@ -1,0 +1,171 @@
+spring:
+  application:
+    name: api-gateway
+
+  # ── JWT Resource Server ──────────────────────────────────────────────────
+  # ADR-001: The gateway is the SOLE entry point for JWT validation.
+  # Downstream services trust the forwarded Authorization header
+  # and do not call Keycloak themselves for every request.
+  # This centralises auth logic and avoids N*M calls (N services × M requests).
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${KEYCLOAK_JWKS_URI:http://localhost:8080/realms/bankos/protocol/openid-connect/certs}
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/bankos}
+
+  # ── Redis — rate limit backend ───────────────────────────────────────────
+  # ADR-001: Rate limiting lives at the gateway, not in individual services.
+  # Redis stores the token bucket state so rate limits work across
+  # multiple gateway replicas (horizontal scaling).
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 8
+          min-idle: 2
+
+  # ── Routes ───────────────────────────────────────────────────────────────
+  cloud:
+    gateway:
+      # Global CORS — applied to all routes
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"     # local frontend dev
+              - "${FRONTEND_URL:https://app.bankos.demo}"
+            allowedMethods: [GET, POST, PUT, DELETE, OPTIONS]
+            allowedHeaders: ["*"]
+            exposedHeaders: [Authorization, Idempotency-Key]
+            maxAge: 3600
+
+      # Default filters applied to ALL routes
+      default-filters:
+        # Forward the X-Request-Id for distributed tracing
+        - name: AddRequestHeader
+          args:
+            name: X-Gateway-Version
+            value: "1.0"
+        # Remove the upstream service's Server header for security
+        - RemoveResponseHeader=Server
+
+      routes:
+
+        # ── Account Service ─────────────────────────────────────────────
+        - id: account-service
+          uri: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/v1/accounts/**
+          filters:
+            # JWT auth filter — validates token, extracts roles
+            - name: JwtAuthenticationFilter
+            # Rate limit: 20 req/s per user for account reads
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+                redis-rate-limiter.requestedTokens: 1
+                key-resolver: "#{@userKeyResolver}"
+            # Circuit breaker — fail fast if account service is down
+            - name: CircuitBreaker
+              args:
+                name: accountServiceCB
+                fallbackUri: forward:/fallback/account
+            # Strip internal timing header before forwarding
+            - RemoveRequestHeader=X-Internal-Timing
+
+        # ── Transaction Service ──────────────────────────────────────────
+        - id: transaction-service
+          uri: ${TRANSACTION_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/transactions/**
+          filters:
+            - name: JwtAuthenticationFilter
+            # Stricter rate limit for financial operations: 5 req/s per user
+            # ADR-001: transaction rate limits protect against accidental loops
+            # and slow down brute-force idempotency key enumeration
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 5
+                redis-rate-limiter.burstCapacity: 10
+                redis-rate-limiter.requestedTokens: 1
+                key-resolver: "#{@userKeyResolver}"
+            - name: CircuitBreaker
+              args:
+                name: transactionServiceCB
+                fallbackUri: forward:/fallback/transaction
+            # Add Idempotency-Key if client didn't provide one
+            # (clients SHOULD provide their own — this is a safety net)
+            - name: AddRequestHeaderIfNotPresent
+              args:
+                name: Idempotency-Key
+                values: "auto-#{T(java.util.UUID).randomUUID()}"
+
+        # ── Notification Service (admin/read-only) ───────────────────────
+        - id: notification-service
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - name: JwtAuthenticationFilter
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: 10
+                redis-rate-limiter.burstCapacity: 20
+                redis-rate-limiter.requestedTokens: 1
+                key-resolver: "#{@userKeyResolver}"
+            - name: CircuitBreaker
+              args:
+                name: notificationServiceCB
+                fallbackUri: forward:/fallback/notification
+
+        # ── Public health endpoints (no auth, no rate limit) ─────────────
+        - id: actuator-public
+          uri: ${ACCOUNT_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/health/**
+          filters: []
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  endpoint:
+    health:
+      show-details: when-authorized
+    gateway:
+      enabled: true   # exposes /actuator/gateway/routes — useful for debugging
+
+# ── Resilience4j circuit breakers ─────────────────────────────────────────────
+resilience4j:
+  circuitbreaker:
+    instances:
+      accountServiceCB:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
+      transactionServiceCB:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 3
+      notificationServiceCB:
+        sliding-window-size: 5
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 2
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    com.bankos.gateway: DEBUG
+    org.springframework.security: INFO

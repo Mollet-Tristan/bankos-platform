@@ -1,0 +1,194 @@
+# BankOS Platform — Alerting Rules
+#
+# Alert design philosophy:
+#  - Alert on SYMPTOMS, not causes (alert on high error rate, not on "kafka lag > X")
+#  - Every alert must be actionable — if you can't do anything, it's not an alert
+#  - SLO-based: alerts fire before the SLO is breached, giving time to react
+#
+# Severity levels:
+#  - critical: immediate action required (page on-call)
+#  - warning:  action required within hours (Slack notification)
+#  - info:     informational (no paging)
+
+groups:
+
+  # ── Transaction SLOs ─────────────────────────────────────────────────────────
+  - name: transaction-slos
+    interval: 30s
+    rules:
+
+      # Alert when the transaction failure rate exceeds 5% over 5 minutes
+      # This fires BEFORE the SLO breach — giving ops time to react
+      - alert: HighTransactionFailureRate
+        expr: |
+          rate(http_server_requests_seconds_count{
+            app="transaction-service",
+            status=~"4..|5..",
+            uri="/api/v1/transactions"
+          }[5m])
+          /
+          rate(http_server_requests_seconds_count{
+            app="transaction-service",
+            uri="/api/v1/transactions"
+          }[5m])
+          > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          service: transaction-service
+          team: payments
+        annotations:
+          summary: "High transaction failure rate on {{ $labels.instance }}"
+          description: |
+            Transaction failure rate is {{ $value | humanizePercentage }} 
+            (threshold: 5%) over the last 5 minutes.
+            
+            Check: Transaction Service logs, Account Service health, circuit breaker status.
+          runbook: "https://wiki.bankos.demo/runbooks/transaction-failure-rate"
+
+      # P99 latency > 500ms for transaction submission
+      - alert: TransactionHighLatency
+        expr: |
+          histogram_quantile(0.99,
+            rate(http_server_requests_seconds_bucket{
+              app="transaction-service",
+              uri="/api/v1/transactions",
+              method="POST"
+            }[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: transaction-service
+        annotations:
+          summary: "Transaction P99 latency above 500ms"
+          description: |
+            P99 latency for POST /api/v1/transactions is {{ $value | humanizeDuration }}.
+            
+            Check: Account Service response times, database connection pool, Kafka producer lag.
+
+  # ── Saga compensation alerts ──────────────────────────────────────────────────
+  - name: saga-health
+    rules:
+
+      - alert: TransactionCompensationSpike
+        expr: |
+          rate(bankos_transaction_compensated_total[10m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          service: transaction-service
+        annotations:
+          summary: "Unusually high transaction compensation rate"
+          description: |
+            {{ $value }} compensations/second over the last 10 minutes.
+            
+            This indicates that transactions are being debited but the
+            downstream step is failing, triggering saga compensation.
+            
+            Check: Account Service availability, network connectivity.
+          runbook: "https://wiki.bankos.demo/runbooks/transaction-compensation"
+
+  # ── Circuit breaker alerts ────────────────────────────────────────────────────
+  - name: circuit-breakers
+    rules:
+
+      - alert: CircuitBreakerOpen
+        expr: |
+          resilience4j_circuitbreaker_state{state="open"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit breaker OPEN: {{ $labels.name }}"
+          description: |
+            Circuit breaker {{ $labels.name }} on {{ $labels.app }} is OPEN.
+            All requests to the downstream service are failing fast.
+            
+            Downstream service may be down or degraded.
+            Check health of the target service immediately.
+
+  # ── Notification delivery alerts ──────────────────────────────────────────────
+  - name: notification-health
+    rules:
+
+      - alert: NotificationDeliveryFailures
+        expr: |
+          rate(bankos_notification_permanently_failed_total[30m]) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: notification-service
+        annotations:
+          summary: "High rate of permanently failed notifications"
+          description: |
+            {{ $value }} permanently failed notifications/second.
+            
+            Check: SMTP server connectivity, email address validity,
+            check notification-service logs for NonRetryableSendException.
+
+      - alert: NotificationRetryQueueGrowing
+        expr: |
+          bankos_notification_pending_retries > 100
+        for: 15m
+        labels:
+          severity: warning
+          service: notification-service
+        annotations:
+          summary: "Notification retry queue is growing"
+          description: |
+            {{ $value }} notifications pending retry.
+            
+            The retry scheduler may not be keeping up, or SMTP is degraded.
+
+  # ── Infrastructure alerts ─────────────────────────────────────────────────────
+  - name: infrastructure
+    rules:
+
+      - alert: KafkaConsumerLag
+        expr: |
+          kafka_consumer_group_lag{
+            group=~"notification-service|reporting-service"
+          } > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer lag growing for {{ $labels.group }}"
+          description: |
+            Consumer group {{ $labels.group }} is lagging {{ $value }} messages 
+            behind the latest offset on topic {{ $labels.topic }}.
+            
+            The consumer may be slow or stuck. Check pod logs.
+
+      - alert: PodCrashLooping
+        expr: |
+          rate(kube_pod_container_status_restarts_total{
+            namespace="bankos"
+          }[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod crash-looping: {{ $labels.pod }}"
+          description: |
+            Pod {{ $labels.pod }} (container {{ $labels.container }}) 
+            in namespace bankos is crash-looping.
+            
+            kubectl logs {{ $labels.pod }} -n bankos --previous
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: |
+          hikaricp_connections_pending{
+            namespace="bankos"
+          } > 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HikariCP connection pool exhausted on {{ $labels.app }}"
+          description: |
+            {{ $value }} threads waiting for a DB connection on {{ $labels.app }}.
+            
+            This will cause request timeouts. Check for slow queries,
+            long-running transactions, or DB server issues.

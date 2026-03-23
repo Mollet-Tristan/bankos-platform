@@ -1,0 +1,146 @@
+# BankOS Platform — Default Helm Values
+#
+# Override per environment:
+#   helm install bankos ./infra/helm/bankos-platform \
+#     -f infra/helm/values-production.yaml \
+#     --set apiGateway.image.tag=1.2.0
+#
+# ADR-016: We use Helm for production deployments and Kustomize for
+# local/dev. Both coexist — Helm templating is powerful for parameterised
+# releases; Kustomize is simpler for environment-specific patches.
+
+global:
+  imageRegistry: "registry.bankos.demo"
+  imagePullPolicy: IfNotPresent
+  namespace: bankos
+
+  # External service connection strings
+  kafka:
+    bootstrapServers: "bankos-kafka:9092"
+
+  keycloak:
+    jwksUri: "http://keycloak:8080/realms/bankos/protocol/openid-connect/certs"
+    issuerUri: "http://keycloak:8080/realms/bankos"
+
+  redis:
+    host: "bankos-redis"
+    port: 6379
+
+# ── API Gateway ───────────────────────────────────────────────────────────────
+apiGateway:
+  enabled: true
+  image:
+    repository: bankos/api-gateway
+    tag: "0.1.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    enabled: true
+    host: api.bankos.demo
+    tls: true
+
+# ── Account Service ───────────────────────────────────────────────────────────
+accountService:
+  enabled: true
+  image:
+    repository: bankos/account-service
+    tag: "0.1.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 384Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+  database:
+    # host/port/name come from a Secret (not here)
+    secretName: account-db-credentials
+  service:
+    port: 8081
+
+# ── Transaction Service ───────────────────────────────────────────────────────
+transactionService:
+  enabled: true
+  image:
+    repository: bankos/transaction-service
+    tag: "0.1.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 250m
+      memory: 384Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+  database:
+    secretName: transaction-db-credentials
+  service:
+    port: 8082
+
+# ── Notification Service ──────────────────────────────────────────────────────
+notificationService:
+  enabled: true
+  image:
+    repository: bankos/notification-service
+    tag: "0.1.0"
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  database:
+    secretName: notification-db-credentials
+  smtp:
+    secretName: smtp-credentials
+  smsEnabled: false
+  service:
+    port: 8083
+
+# ── Reporting Service ─────────────────────────────────────────────────────────
+reportingService:
+  enabled: true
+  image:
+    repository: bankos/reporting-service
+    tag: "0.1.0"
+  consumer:
+    replicaCount: 1
+  persistence:
+    size: 10Gi
+    storageClass: standard
+  cronJob:
+    schedule: "0 1 * * *"
+
+# ── Monitoring ────────────────────────────────────────────────────────────────
+monitoring:
+  prometheus:
+    enabled: true
+    scrapeInterval: 15s
+  grafana:
+    enabled: true
+    dashboards: true

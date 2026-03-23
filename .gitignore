@@ -1,0 +1,38 @@
+# ── Gradle (services Kotlin) ─────────────────────────
+.gradle/
+build/
+*.jar
+*.war
+*.class
+out/
+ 
+# ── Rust (reporting-service) ─────────────────────────
+target/
+**/*.db          # SQLite — ne jamais commiter les données locales
+Cargo.lock       # Optionnel : commit si binary crate, ignore si library
+ 
+# ── Infra / Secrets ──────────────────────────────────
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform/
+kubeconfig
+kubeconfig.*
+values-production.yaml   # Contient des URLs sensibles
+ 
+# ── Environnements locaux ────────────────────────────
+.env
+.env.local
+*.env
+ 
+# ── IDE ──────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+*.iws
+.DS_Store
+ 
+# ── Logs ─────────────────────────────────────────────
+*.log
+logs/
+

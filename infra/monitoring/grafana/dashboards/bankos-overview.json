@@ -1,0 +1,208 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "type": "datasource",
+      "pluginId": "prometheus"
+    }
+  ],
+  "title": "BankOS Platform — Overview",
+  "uid": "bankos-overview",
+  "description": "Platform-wide health: transaction throughput, failure rates, latency, circuit breakers",
+  "tags": ["bankos", "platform", "slo"],
+  "timezone": "Europe/Brussels",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Transaction Rate (req/s)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [{
+        "expr": "sum(rate(http_server_requests_seconds_count{app='transaction-service', uri='/api/v1/transactions', method='POST'}[5m]))",
+        "legendFormat": "tx/s"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 50, "color": "yellow" },
+              { "value": 100, "color": "red" }
+            ]
+          },
+          "unit": "reqps"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Transaction Failure Rate",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [{
+        "expr": "sum(rate(http_server_requests_seconds_count{app='transaction-service', status=~'4..|5..', uri='/api/v1/transactions'}[5m])) / sum(rate(http_server_requests_seconds_count{app='transaction-service', uri='/api/v1/transactions'}[5m])) * 100",
+        "legendFormat": "failure %"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 2, "color": "yellow" },
+              { "value": 5, "color": "red" }
+            ]
+          },
+          "unit": "percent",
+          "max": 100
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Transaction P99 Latency",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [{
+        "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket{app='transaction-service', uri='/api/v1/transactions', method='POST'}[5m])) by (le)) * 1000",
+        "legendFormat": "P99 ms"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 200, "color": "yellow" },
+              { "value": 500, "color": "red" }
+            ]
+          },
+          "unit": "ms"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Circuit Breakers",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "targets": [{
+        "expr": "sum(resilience4j_circuitbreaker_state{state='open'})",
+        "legendFormat": "OPEN circuits"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 1, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Request Rate by Service",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{namespace='bankos'}[5m])) by (app)",
+          "legendFormat": "{{ app }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" }
+      }
+    },
+    {
+      "id": 6,
+      "title": "HTTP Error Rate by Service",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{namespace='bankos', status=~'5..'}[5m])) by (app)",
+          "legendFormat": "5xx {{ app }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "color": { "fixedColor": "red" } }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Kafka Consumer Lag",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "kafka_consumer_group_lag{group=~'notification-service|reporting-service'}",
+          "legendFormat": "{{ group }} / {{ topic }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    },
+    {
+      "id": 8,
+      "title": "JVM Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(jvm_memory_used_bytes{namespace='bankos', area='heap'}) by (app) / 1024 / 1024",
+          "legendFormat": "{{ app }} heap MB"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "decmbytes" }
+      }
+    },
+    {
+      "id": 9,
+      "title": "DB Connection Pool — Pending Threads",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 6 },
+      "description": "Threads waiting for a DB connection. Alert if > 5 for sustained period.",
+      "targets": [
+        {
+          "expr": "hikaricp_connections_pending{namespace='bankos'}",
+          "legendFormat": "{{ app }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "thresholds": {
+          "steps": [{ "value": 0, "color": "green" }, { "value": 5, "color": "red" }]
+        }}
+      }
+    },
+    {
+      "id": 10,
+      "title": "Notification Delivery Status",
+      "type": "piechart",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "bankos_notification_delivered_total",
+          "legendFormat": "Delivered"
+        },
+        {
+          "expr": "bankos_notification_failed_total",
+          "legendFormat": "Failed (retryable)"
+        },
+        {
+          "expr": "bankos_notification_permanently_failed_total",
+          "legendFormat": "Permanently Failed"
+        }
+      ]
+    }
+  ]
+}

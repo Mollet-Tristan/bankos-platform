@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; }
+        .header { background: #c0392b; color: white; padding: 24px; border-radius: 4px 4px 0 0; }
+        .body { background: #f9f9f9; padding: 24px; border: 1px solid #e0e0e0; }
+        .footer { font-size: 11px; color: #999; padding: 16px; text-align: center; }
+        .ref { font-family: monospace; background: #eee; padding: 4px 8px; border-radius: 3px; }
+        .reason { background: #fff3f3; border-left: 3px solid #c0392b; padding: 10px 14px; margin: 12px 0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2 style="margin:0">❌ Transaction Failed</h2>
+        <p style="margin:4px 0 0 0;opacity:0.8">BankOS Platform</p>
+    </div>
+    <div class="body">
+        <p th:text="${body}">Your transaction could not be processed.</p>
+        <div class="reason">
+            <strong>No funds have been debited from your account.</strong>
+        </div>
+        <p>Reference: <span class="ref" th:text="${notificationId}">ref</span></p>
+        <p>If you need assistance, please contact your account manager.</p>
+    </div>
+    <div class="footer">
+        This is an automated notification from BankOS Demo Platform.<br>
+        Do not reply to this email.
+    </div>
+</body>
+</html>

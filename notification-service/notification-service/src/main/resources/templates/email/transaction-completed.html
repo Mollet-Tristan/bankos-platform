@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; }
+        .header { background: #1a3a5c; color: white; padding: 24px; border-radius: 4px 4px 0 0; }
+        .body { background: #f9f9f9; padding: 24px; border: 1px solid #e0e0e0; }
+        .footer { font-size: 11px; color: #999; padding: 16px; text-align: center; }
+        .amount { font-size: 24px; font-weight: bold; color: #1a3a5c; }
+        .ref { font-family: monospace; background: #eee; padding: 4px 8px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2 style="margin:0">✅ Transaction Confirmed</h2>
+        <p style="margin:4px 0 0 0;opacity:0.8">BankOS Platform</p>
+    </div>
+    <div class="body">
+        <p th:text="${body}">Your transaction has been processed successfully.</p>
+        <p>Reference: <span class="ref" th:text="${notificationId}">ref</span></p>
+    </div>
+    <div class="footer">
+        This is an automated notification from BankOS Demo Platform.<br>
+        Do not reply to this email.
+    </div>
+</body>
+</html>

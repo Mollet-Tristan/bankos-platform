@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; }
+        .header { background: #5d6d7e; color: white; padding: 24px; border-radius: 4px 4px 0 0; }
+        .body { background: #f9f9f9; padding: 24px; border: 1px solid #e0e0e0; }
+        .footer { font-size: 11px; color: #999; padding: 16px; text-align: center; }
+        .ref { font-family: monospace; background: #eee; padding: 4px 8px; border-radius: 3px; }
+        .alert { background: #f2f3f4; border-left: 3px solid #5d6d7e; padding: 10px 14px; margin: 12px 0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2 style="margin:0">🔒 Account Frozen</h2>
+        <p style="margin:4px 0 0 0;opacity:0.8">Action required</p>
+    </div>
+    <div class="body">
+        <p th:text="${body}">Your account has been temporarily frozen.</p>
+        <div class="alert">
+            <strong>While your account is frozen:</strong><br>
+            Debits and transfers are suspended. Credits (incoming funds) are still accepted.
+        </div>
+        <p>Account reference: <span class="ref" th:text="${notificationId}">ref</span></p>
+        <p>Please contact your account manager or support to resolve this as soon as possible.</p>
+    </div>
+    <div class="footer">
+        This is an automated notification from BankOS Demo Platform.<br>
+        Do not reply to this email.
+    </div>
+</body>
+</html>

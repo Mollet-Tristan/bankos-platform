@@ -1,0 +1,110 @@
+---
+# Ingress — external traffic entry point
+#
+# Routes HTTPS traffic to the API Gateway.
+# Uses nginx ingress controller (most common in managed K8s clusters).
+#
+# ADR-001: The API Gateway is the SOLE entry point for API traffic.
+# The Ingress does NOT route directly to individual services —
+# all routing intelligence lives in the gateway.
+#
+# TLS: cert-manager handles certificate provisioning from Let's Encrypt.
+# The annotation `cert-manager.io/cluster-issuer` triggers automatic
+# certificate renewal.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bankos-ingress
+  namespace: bankos
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # TLS certificate from Let's Encrypt via cert-manager
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Rate limiting at the Ingress level (coarse — the gateway does fine-grained)
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    # Proxy timeouts — aligned with our circuit breaker settings
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.bankos.demo
+      secretName: bankos-tls
+  rules:
+    - host: api.bankos.demo
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
+---
+# NetworkPolicy — restrict pod-to-pod communication
+#
+# Defence-in-depth: even if a pod is compromised, it cannot
+# reach services it has no business talking to.
+#
+# Rule: notification-service can only be reached by:
+#   - The API Gateway (for admin reads)
+#   - Kafka (implicit — Kafka is accessed outbound by the consumer)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: notification-service-netpol
+  namespace: bankos
+spec:
+  podSelector:
+    matchLabels:
+      app: notification-service
+  policyTypes:
+    - Ingress
+  ingress:
+    # Only the gateway can call notification-service REST API
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8083
+---
+# NetworkPolicy — account-service ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: account-service-netpol
+  namespace: bankos
+spec:
+  podSelector:
+    matchLabels:
+      app: account-service
+  policyTypes:
+    - Ingress
+  ingress:
+    # Gateway routes read/write requests to account-service
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8081
+    # Transaction-service calls account-service for debit/credit
+    - from:
+        - podSelector:
+            matchLabels:
+              app: transaction-service
+      ports:
+        - protocol: TCP
+          port: 8081

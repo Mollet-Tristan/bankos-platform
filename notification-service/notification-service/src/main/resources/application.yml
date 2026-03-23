@@ -1,0 +1,78 @@
+spring:
+  application:
+    name: notification-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/bankos_notifications
+    username: ${DB_USERNAME:bankos}
+    password: ${DB_PASSWORD:bankos}
+    hikari:
+      maximum-pool-size: 5   # smaller pool — this service is I/O light
+      minimum-idle: 1
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false       # manual ACK — at-least-once safety
+      max-poll-records: 10            # small batch: we do SMTP per message
+    listener:
+      ack-mode: manual_immediate
+      concurrency: 2                  # 2 consumer threads per topic
+
+  # SMTP — point to Mailpit in dev, real SMTP in prod
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: false
+      mail.smtp.starttls.enable: false
+
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+    cache: false
+
+server:
+  port: 8083
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+bankos:
+  notification:
+    retry-interval-ms: 60000          # retry failed notifications every 60s
+    sms:
+      enabled: false                  # SMS channel disabled by default
+
+logging:
+  level:
+    com.bankos: DEBUG
+    org.springframework.kafka: INFO

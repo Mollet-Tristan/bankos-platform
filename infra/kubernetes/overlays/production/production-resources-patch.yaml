@@ -1,0 +1,53 @@
+# Production resource overrides
+# Higher limits — production traffic is higher than staging
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+spec:
+  template:
+    spec:
+      containers:
+        - name: api-gateway
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: account-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: account-service
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "4"
+              memory: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transaction-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: transaction-service
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "4"
+              memory: 2Gi

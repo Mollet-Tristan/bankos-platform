@@ -1,0 +1,43 @@
+apiVersion: v2
+name: bankos-platform
+description: |
+  BankOS Platform — Helm chart for the complete microservices suite.
+
+  Deploys:
+    - api-gateway (Spring Cloud Gateway)
+    - account-service (Kotlin + Spring Boot)
+    - transaction-service (Kotlin + Spring Boot)
+    - notification-service (Kotlin + Spring Boot)
+    - reporting-service (Rust CLI + consumer)
+
+  Infrastructure dependencies (managed separately or via sub-charts):
+    - PostgreSQL (per-service databases)
+    - Apache Kafka
+    - Redis (rate limiting)
+    - Keycloak (identity provider)
+
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+keywords:
+  - banking
+  - microservices
+  - kotlin
+  - rust
+  - kafka
+
+maintainers:
+  - name: Tristan
+    url: https://github.com/zordym
+
+dependencies:
+  # Sub-charts for infrastructure (commented out — use managed services in prod)
+  # - name: postgresql
+  #   version: "~13.0"
+  #   repository: https://charts.bitnami.com/bitnami
+  #   condition: postgresql.enabled
+  # - name: kafka
+  #   version: "~26.0"
+  #   repository: https://charts.bitnami.com/bitnami
+  #   condition: kafka.enabled

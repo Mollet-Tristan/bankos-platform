@@ -1,0 +1,133 @@
+{{/*
+  Deployment template — renders for each enabled service.
+  
+  Demonstrates Helm templating: a single template file generates
+  all four Deployment manifests with per-service values.
+  
+  This is the core Helm value proposition over raw YAML:
+  DRY configuration with per-environment overrides.
+*/}}
+
+{{- define "bankos.deployment" -}}
+{{- $service := .service -}}
+{{- $values  := .values  -}}
+{{- $global  := .global  -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $service.name }}
+  namespace: {{ $global.namespace }}
+  labels:
+    app: {{ $service.name }}
+    app.kubernetes.io/name: {{ $service.name }}
+    app.kubernetes.io/part-of: bankos-platform
+    app.kubernetes.io/version: {{ $values.image.tag | quote }}
+    helm.sh/chart: {{ printf "%s-%s" $.Chart.Name $.Chart.Version }}
+spec:
+  replicas: {{ $values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ $service.name }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: {{ $service.name }}
+        version: {{ $values.image.tag | quote }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $service.port | quote }}
+        prometheus.io/path: "/actuator/prometheus"
+        # Force pod restart on ConfigMap change
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - {{ $service.name }}
+                topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: {{ $service.name }}
+          image: "{{ $global.imageRegistry }}/{{ $values.image.repository }}:{{ $values.image.tag }}"
+          imagePullPolicy: {{ $global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $service.port }}
+          resources:
+            {{- toYaml $values.resources | nindent 12 }}
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "kubernetes"
+            - name: SERVER_PORT
+              value: {{ $service.port | quote }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ $global.kafka.bootstrapServers }}
+            - name: KEYCLOAK_JWKS_URI
+              value: {{ $global.keycloak.jwksUri }}
+            {{- if $values.database }}
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $values.database.secretName }}
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $values.database.secretName }}
+                  key: password
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: {{ $service.port }}
+            initialDelaySeconds: 40
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: {{ $service.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 5
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: {{ $service.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 15
+{{- end -}}
+
+{{/* Render each enabled service */}}
+
+{{- if .Values.apiGateway.enabled }}
+{{- include "bankos.deployment" (dict "service" (dict "name" "api-gateway" "port" 8080) "values" .Values.apiGateway "global" .Values.global "Chart" .Chart "Template" .Template) }}
+{{- end }}
+
+{{- if .Values.accountService.enabled }}
+{{- include "bankos.deployment" (dict "service" (dict "name" "account-service" "port" 8081) "values" .Values.accountService "global" .Values.global "Chart" .Chart "Template" .Template) }}
+{{- end }}
+
+{{- if .Values.transactionService.enabled }}
+{{- include "bankos.deployment" (dict "service" (dict "name" "transaction-service" "port" 8082) "values" .Values.transactionService "global" .Values.global "Chart" .Chart "Template" .Template) }}
+{{- end }}
+
+{{- if .Values.notificationService.enabled }}
+{{- include "bankos.deployment" (dict "service" (dict "name" "notification-service" "port" 8083) "values" .Values.notificationService "global" .Values.global "Chart" .Chart "Template" .Template) }}
+{{- end }}

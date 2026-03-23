@@ -1,0 +1,135 @@
+---
+# Reporting Consumer — long-running Kafka consumer
+#
+# The consumer binary runs as a Deployment (one replica is sufficient —
+# Kafka partitions can be rebalanced if we need to scale).
+# It writes to a PersistentVolumeClaim mounted at /data.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporting-consumer
+  namespace: bankos
+  labels:
+    app: reporting-consumer
+    app.kubernetes.io/part-of: bankos-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reporting-consumer
+  strategy:
+    # Recreate (not RollingUpdate) because only one replica must own the SQLite file.
+    # SQLite does not support concurrent writers from separate processes.
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: reporting-consumer
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: reporting-consumer
+          image: bankos/reporting-service:0.1.0
+          imagePullPolicy: IfNotPresent
+          command: ["/app/bankos-consumer"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          env:
+            - name: KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: bankos-config
+                  key: kafka.bootstrap-servers
+            - name: BANKOS_DB_PATH
+              value: "/data/bankos-reports.db"
+          volumeMounts:
+            - name: report-data
+              mountPath: /data
+          livenessProbe:
+            exec:
+              # Check that the SQLite file is being written to recently
+              command: ["find", "/data", "-name", "*.db", "-mmin", "-5"]
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            failureThreshold: 3
+      volumes:
+        - name: report-data
+          persistentVolumeClaim:
+            claimName: reporting-data-pvc
+---
+# PersistentVolumeClaim — stores the SQLite database
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: reporting-data-pvc
+  namespace: bankos
+spec:
+  accessModes:
+    - ReadWriteOnce   # Single pod can read/write (matches Recreate strategy)
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+# CronJob — generates daily reports at midnight
+#
+# Runs bankos-report and exports JSON to a ConfigMap or object storage.
+# This gives ops a daily snapshot without running the CLI manually.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: reporting-daily
+  namespace: bankos
+spec:
+  schedule: "0 1 * * *"   # 01:00 UTC daily (after day boundary)
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+          containers:
+            - name: daily-report
+              image: bankos/reporting-service:0.1.0
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  YESTERDAY=$(date -d "yesterday" +%Y-%m-%d)
+                  /app/bankos-report summary \
+                    --start $YESTERDAY \
+                    --end $YESTERDAY \
+                    --json > /tmp/daily-report.json
+                  echo "Daily report for $YESTERDAY generated"
+                  cat /tmp/daily-report.json
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              env:
+                - name: BANKOS_DB_PATH
+                  value: "/data/bankos-reports.db"
+              volumeMounts:
+                - name: report-data
+                  mountPath: /data
+                  readOnly: true
+          volumes:
+            - name: report-data
+              persistentVolumeClaim:
+                claimName: reporting-data-pvc

@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Local overlay — minimal replicas, local images, no TLS
+# Use with: kubectl apply -k infra/kubernetes/overlays/local
+bases:
+  - ../../base
+
+# Override image tags for local development (e.g. minikube)
+images:
+  - name: bankos/api-gateway
+    newTag: local
+  - name: bankos/account-service
+    newTag: local
+  - name: bankos/transaction-service
+    newTag: local
+  - name: bankos/notification-service
+    newTag: local
+  - name: bankos/reporting-service
+    newTag: local
+
+patches:
+  # Scale down to 1 replica for local dev (saves resources)
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+  # Remove HPA — unnecessary for local dev
+  - patch: |-
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: "*"
+    target:
+      kind: HorizontalPodAutoscaler
+  # Use local ConfigMap values
+  - path: local-configmap-patch.yaml

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bankos-config
+  namespace: bankos
+data:
+  # Override with local service addresses (minikube / kind)
+  kafka.bootstrap-servers: "localhost:9092"
+  keycloak.jwks-uri: "http://localhost:8180/realms/bankos/protocol/openid-connect/certs"
+  keycloak.issuer-uri: "http://localhost:8180/realms/bankos"
+  account-service.datasource-url: "jdbc:postgresql://localhost:5432/bankos_accounts"
+  transaction-service.datasource-url: "jdbc:postgresql://localhost:5433/bankos_transactions"
+  notification-service.datasource-url: "jdbc:postgresql://localhost:5434/bankos_notifications"

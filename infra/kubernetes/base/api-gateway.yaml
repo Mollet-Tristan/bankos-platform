@@ -1,0 +1,205 @@
+---
+# API Gateway — Deployment
+#
+# The gateway is the most critical component: all external traffic flows
+# through it. It is therefore:
+#  - Horizontally scaled (minReplicas: 2 even in base)
+#  - Given a PodDisruptionBudget (never take all replicas offline at once)
+#  - Running with readiness probes before receiving traffic
+#  - Anti-affinity: no two replicas on the same node (resilience to node failure)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: bankos
+  labels:
+    app: api-gateway
+    app.kubernetes.io/name: api-gateway
+    app.kubernetes.io/part-of: bankos-platform
+    app.kubernetes.io/version: "0.1.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0   # Zero-downtime deployments: always keep all pods up during rollout
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        version: "0.1.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      # Anti-affinity: spread replicas across nodes
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: [api-gateway]
+                topologyKey: kubernetes.io/hostname
+
+      # Security: don't run as root
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+      containers:
+        - name: api-gateway
+          image: bankos/api-gateway:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # Resource requests and limits
+          # Request: guaranteed allocation on scheduling
+          # Limit: hard cap — container is OOMKilled if exceeded
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "kubernetes"
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: redis-credentials
+                  key: host
+            - name: REDIS_PORT
+              value: "6379"
+            - name: KEYCLOAK_JWKS_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: bankos-config
+                  key: keycloak.jwks-uri
+            - name: KEYCLOAK_ISSUER_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: bankos-config
+                  key: keycloak.issuer-uri
+            - name: ACCOUNT_SERVICE_URL
+              value: "http://account-service:8081"
+            - name: TRANSACTION_SERVICE_URL
+              value: "http://transaction-service:8082"
+            - name: NOTIFICATION_SERVICE_URL
+              value: "http://notification-service:8083"
+
+          # Liveness: is the JVM alive? Restart if not.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+
+          # Readiness: is the gateway ready to handle traffic?
+          # Only READY pods receive traffic from the Service.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            failureThreshold: 3
+
+          # Startup: give extra time on first boot (JVM warmup)
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12   # 60s total before declaring failure
+---
+# Service — exposes the gateway internally
+# The Ingress (below) routes external traffic here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: bankos
+  labels:
+    app: api-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: api-gateway
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+---
+# HorizontalPodAutoscaler — scale out under load
+#
+# ADR-016: The gateway scales on CPU (reactive to request rate).
+# Scaling happens faster than scaling down (stabilizationWindowSeconds).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: bankos
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30    # Scale up quickly
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300   # Scale down conservatively
+---
+# PodDisruptionBudget — guarantee availability during node maintenance
+#
+# minAvailable: 1 → at least 1 pod must be running during voluntary disruptions
+# (node drain, rolling update of the node pool, etc.)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: bankos
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api-gateway

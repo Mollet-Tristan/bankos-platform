@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: bankos
+
+resources:
+  - ../namespaces/bankos.yaml
+  - configmap.yaml
+  - ingress.yaml
+  - api-gateway.yaml
+  - account-service.yaml
+  - transaction-service.yaml
+  - notification-service.yaml
+  - reporting-service.yaml
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: bankos-platform

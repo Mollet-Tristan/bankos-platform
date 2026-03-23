@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../../base
+
+# Production image tags — set by CI pipeline before apply
+images:
+  - name: bankos/api-gateway
+    newTag: "1.0.0"
+  - name: bankos/account-service
+    newTag: "1.0.0"
+  - name: bankos/transaction-service
+    newTag: "1.0.0"
+  - name: bankos/notification-service
+    newTag: "1.0.0"
+  - name: bankos/reporting-service
+    newTag: "1.0.0"
+
+patches:
+  # Production: higher replica counts
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+    target:
+      kind: Deployment
+      labelSelector: "app in (api-gateway, account-service, transaction-service)"
+
+  # Production: stricter resource limits
+  - path: production-resources-patch.yaml

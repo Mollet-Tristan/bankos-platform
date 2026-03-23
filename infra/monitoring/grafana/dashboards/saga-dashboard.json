@@ -1,0 +1,135 @@
+{
+  "title": "BankOS — Transaction Saga Health",
+  "uid": "bankos-saga",
+  "description": "Transaction lifecycle: PENDING→COMPLETED/FAILED/COMPENSATED. Saga health, idempotency, circuit breakers.",
+  "tags": ["bankos", "saga", "transactions"],
+  "timezone": "Europe/Brussels",
+  "refresh": "15s",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Transaction Outcomes (last 5m)",
+      "type": "piechart",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
+      "description": "Proportion of COMPLETED vs FAILED vs COMPENSATED transactions.",
+      "targets": [
+        {
+          "expr": "sum(increase(bankos_transaction_completed_total[5m]))",
+          "legendFormat": "COMPLETED"
+        },
+        {
+          "expr": "sum(increase(bankos_transaction_failed_total[5m]))",
+          "legendFormat": "FAILED (business)"
+        },
+        {
+          "expr": "sum(increase(bankos_transaction_compensated_total[5m]))",
+          "legendFormat": "COMPENSATED (saga)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "COMPLETED" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "FAILED (business)" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "COMPENSATED (saga)" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red" } }] }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "title": "Compensation Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 0, "w": 16, "h": 8 },
+      "description": "Rate of saga compensations. Spikes indicate infrastructure problems between Transaction Service and Account Service.",
+      "targets": [
+        {
+          "expr": "rate(bankos_transaction_compensated_total[5m])",
+          "legendFormat": "compensations/s"
+        },
+        {
+          "expr": "rate(bankos_transaction_completed_total[5m])",
+          "legendFormat": "completed/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Circuit Breaker State — Account Service",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 4 },
+      "targets": [{
+        "expr": "resilience4j_circuitbreaker_state{name='accountServiceCB'}",
+        "legendFormat": ""
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "CLOSED", "color": "green" }, "1": { "text": "OPEN", "color": "red" }, "2": { "text": "HALF-OPEN", "color": "yellow" } }, "type": "value" }
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Circuit Breaker Calls — Success vs Failure",
+      "type": "timeseries",
+      "gridPos": { "x": 6, "y": 8, "w": 18, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(resilience4j_circuitbreaker_calls_total{name='accountServiceCB', kind='successful'}[5m])",
+          "legendFormat": "successful"
+        },
+        {
+          "expr": "rate(resilience4j_circuitbreaker_calls_total{name='accountServiceCB', kind='failed'}[5m])",
+          "legendFormat": "failed"
+        },
+        {
+          "expr": "rate(resilience4j_circuitbreaker_calls_total{name='accountServiceCB', kind='not_permitted'}[5m])",
+          "legendFormat": "not permitted (circuit open)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 5,
+      "title": "Idempotent Request Rate",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 6 },
+      "description": "Rate of requests that hit an existing idempotency key. Spikes may indicate client retry storms.",
+      "targets": [{
+        "expr": "rate(bankos_transaction_idempotent_hit_total[5m])",
+        "legendFormat": "idempotent hits/s"
+      }],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "id": 6,
+      "title": "Transaction Type Distribution",
+      "type": "bargauge",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 6 },
+      "targets": [
+        {
+          "expr": "sum(increase(bankos_transaction_completed_total{type='WITHDRAWAL'}[1h]))",
+          "legendFormat": "WITHDRAWAL"
+        },
+        {
+          "expr": "sum(increase(bankos_transaction_completed_total{type='DEPOSIT'}[1h]))",
+          "legendFormat": "DEPOSIT"
+        },
+        {
+          "expr": "sum(increase(bankos_transaction_completed_total{type='TRANSFER'}[1h]))",
+          "legendFormat": "TRANSFER"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+---
+# BankOS Platform ConfigMap
+#
+# Contains non-sensitive configuration shared across services.
+# Sensitive values (passwords, tokens) are in Secrets — never here.
+#
+# ADR-016: ConfigMaps are environment-specific and overridden via
+# Kustomize overlays. The values here are defaults for the base layer.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bankos-config
+  namespace: bankos
+  labels:
+    app.kubernetes.io/part-of: bankos-platform
+data:
+  # Kafka
+  kafka.bootstrap-servers: "bankos-kafka:9092"
+
+  # Keycloak
+  keycloak.jwks-uri: "http://keycloak:8080/realms/bankos/protocol/openid-connect/certs"
+  keycloak.issuer-uri: "http://keycloak:8080/realms/bankos"
+
+  # Database URLs (credentials are in Secrets)
+  account-service.datasource-url: "jdbc:postgresql://account-postgres:5432/bankos_accounts"
+  transaction-service.datasource-url: "jdbc:postgresql://transaction-postgres:5432/bankos_transactions"
+  notification-service.datasource-url: "jdbc:postgresql://notification-postgres:5432/bankos_notifications"
+
+  # Feature flags
+  bankos.notification.sms.enabled: "false"
+  bankos.notification.retry-interval-ms: "60000"

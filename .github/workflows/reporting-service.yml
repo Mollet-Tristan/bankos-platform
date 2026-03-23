@@ -1,0 +1,44 @@
+name: reporting-service
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'reporting-service/**'
+  pull_request:
+    paths:
+      - 'reporting-service/**'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: reporting-service
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            reporting-service/target
+          key: cargo-${{ hashFiles('reporting-service/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        run: cargo test

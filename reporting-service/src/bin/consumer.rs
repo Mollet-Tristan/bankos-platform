@@ -47,11 +47,7 @@ struct Cli {
     #[arg(long, env = "KAFKA_GROUP_ID", default_value = "reporting-service")]
     group_id: String,
 
-    #[arg(
-        long,
-        env = "KAFKA_TOPIC",
-        default_value = "bankos.transaction.events"
-    )]
+    #[arg(long, env = "KAFKA_TOPIC", default_value = "bankos.transaction.events")]
     topic: String,
 }
 

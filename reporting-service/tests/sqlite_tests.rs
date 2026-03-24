@@ -13,14 +13,24 @@ use reporting::infrastructure::persistence::{
 use rust_decimal_macros::dec;
 use std::sync::Arc;
 
-fn setup() -> (Arc<SqliteDb>, Arc<SqliteTransactionRepository>, Arc<SqliteReportStore>) {
+fn setup() -> (
+    Arc<SqliteDb>,
+    Arc<SqliteTransactionRepository>,
+    Arc<SqliteReportStore>,
+) {
     let db = Arc::new(SqliteDb::in_memory().unwrap());
     let repo = Arc::new(SqliteTransactionRepository::new(db.clone()));
     let store = Arc::new(SqliteReportStore::new(db.clone()));
     (db, repo, store)
 }
 
-fn make_tx(id: &str, account: &str, amount: f64, date: &str, status: TransactionStatus) -> Transaction {
+fn make_tx(
+    id: &str,
+    account: &str,
+    amount: f64,
+    date: &str,
+    status: TransactionStatus,
+) -> Transaction {
     Transaction {
         id: id.to_string(),
         source_account_id: account.to_string(),
@@ -46,7 +56,13 @@ fn make_tx(id: &str, account: &str, amount: f64, date: &str, status: Transaction
 async fn sqlite_insert_and_find_by_period() {
     let (_, repo, _) = setup();
 
-    let tx = make_tx("tx-1", "acc-a", 100.0, "2024-01-15", TransactionStatus::Completed);
+    let tx = make_tx(
+        "tx-1",
+        "acc-a",
+        100.0,
+        "2024-01-15",
+        TransactionStatus::Completed,
+    );
     repo.insert(&tx).unwrap();
 
     let results = repo
@@ -66,8 +82,22 @@ async fn sqlite_insert_and_find_by_period() {
 async fn sqlite_find_by_period_filters_out_of_range() {
     let (_, repo, _) = setup();
 
-    repo.insert(&make_tx("tx-jan", "acc-a", 100.0, "2024-01-15", TransactionStatus::Completed)).unwrap();
-    repo.insert(&make_tx("tx-dec", "acc-a", 200.0, "2023-12-15", TransactionStatus::Completed)).unwrap();
+    repo.insert(&make_tx(
+        "tx-jan",
+        "acc-a",
+        100.0,
+        "2024-01-15",
+        TransactionStatus::Completed,
+    ))
+    .unwrap();
+    repo.insert(&make_tx(
+        "tx-dec",
+        "acc-a",
+        200.0,
+        "2023-12-15",
+        TransactionStatus::Completed,
+    ))
+    .unwrap();
 
     let results = repo
         .find_by_period(
@@ -85,7 +115,13 @@ async fn sqlite_find_by_period_filters_out_of_range() {
 async fn sqlite_insert_is_idempotent_on_duplicate_id() {
     let (_, repo, _) = setup();
 
-    let tx = make_tx("tx-dup", "acc-a", 100.0, "2024-01-15", TransactionStatus::Completed);
+    let tx = make_tx(
+        "tx-dup",
+        "acc-a",
+        100.0,
+        "2024-01-15",
+        TransactionStatus::Completed,
+    );
     repo.insert(&tx).unwrap();
     repo.insert(&tx).unwrap(); // INSERT OR IGNORE — should not fail
 
@@ -98,8 +134,14 @@ async fn sqlite_count_returns_total() {
     let (_, repo, _) = setup();
 
     for i in 0..5 {
-        repo.insert(&make_tx(&format!("tx-{i}"), "acc-a", 100.0, "2024-01-15", TransactionStatus::Completed))
-            .unwrap();
+        repo.insert(&make_tx(
+            &format!("tx-{i}"),
+            "acc-a",
+            100.0,
+            "2024-01-15",
+            TransactionStatus::Completed,
+        ))
+        .unwrap();
     }
 
     assert_eq!(repo.count().await.unwrap(), 5);
@@ -109,9 +151,30 @@ async fn sqlite_count_returns_total() {
 async fn sqlite_find_by_account_filters_correctly() {
     let (_, repo, _) = setup();
 
-    repo.insert(&make_tx("tx-a1", "acc-a", 100.0, "2024-01-10", TransactionStatus::Completed)).unwrap();
-    repo.insert(&make_tx("tx-a2", "acc-a", 200.0, "2024-01-11", TransactionStatus::Completed)).unwrap();
-    repo.insert(&make_tx("tx-b1", "acc-b", 300.0, "2024-01-12", TransactionStatus::Completed)).unwrap();
+    repo.insert(&make_tx(
+        "tx-a1",
+        "acc-a",
+        100.0,
+        "2024-01-10",
+        TransactionStatus::Completed,
+    ))
+    .unwrap();
+    repo.insert(&make_tx(
+        "tx-a2",
+        "acc-a",
+        200.0,
+        "2024-01-11",
+        TransactionStatus::Completed,
+    ))
+    .unwrap();
+    repo.insert(&make_tx(
+        "tx-b1",
+        "acc-b",
+        300.0,
+        "2024-01-12",
+        TransactionStatus::Completed,
+    ))
+    .unwrap();
 
     let acc_a_txs = repo.find_by_account("acc-a").await.unwrap();
     assert_eq!(acc_a_txs.len(), 2);
@@ -176,21 +239,28 @@ async fn sqlite_store_replace_on_duplicate_period() {
     let period = Period::new(
         NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
         NaiveDate::from_ymd_opt(2024, 1, 31).unwrap(),
-    ).unwrap();
+    )
+    .unwrap();
 
     let first = PeriodSummary {
         period: period.clone(),
         total_completed: 10,
-        total_failed: 0, total_compensated: 0,
+        total_failed: 0,
+        total_compensated: 0,
         total_volume: Money::new(dec!(1000.00), Currency::Eur),
         total_withdrawals: Money::zero(Currency::Eur),
         total_deposits: Money::zero(Currency::Eur),
         total_transfers: Money::zero(Currency::Eur),
         average_transaction: Money::zero(Currency::Eur),
-        failure_rate_pct: 0.0, peak_day: None, peak_day_count: 0,
+        failure_rate_pct: 0.0,
+        peak_day: None,
+        peak_day_count: 0,
     };
 
-    let second = PeriodSummary { total_completed: 99, ..first.clone() };
+    let second = PeriodSummary {
+        total_completed: 99,
+        ..first.clone()
+    };
 
     store.save_period_summary(&first).await.unwrap();
     store.save_period_summary(&second).await.unwrap(); // INSERT OR REPLACE

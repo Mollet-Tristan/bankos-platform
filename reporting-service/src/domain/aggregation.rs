@@ -101,7 +101,10 @@ pub fn compute_daily_breakdown(transactions: &[Transaction], period: &Period) ->
 
     // Group by date
     let mut by_day: HashMap<NaiveDate, Vec<&Transaction>> = HashMap::new();
-    for tx in transactions.iter().filter(|tx| period.contains(&tx.occurred_at)) {
+    for tx in transactions
+        .iter()
+        .filter(|tx| period.contains(&tx.occurred_at))
+    {
         let date = tx.occurred_at.date_naive();
         by_day.entry(date).or_default().push(tx);
     }
@@ -187,10 +190,7 @@ pub fn compute_account_summaries(transactions: &[Transaction]) -> Vec<AccountSum
 }
 
 /// Compute the failure rate trend: compare this period vs previous.
-pub fn compute_failure_trend(
-    current: &PeriodSummary,
-    previous: &PeriodSummary,
-) -> FailureTrend {
+pub fn compute_failure_trend(current: &PeriodSummary, previous: &PeriodSummary) -> FailureTrend {
     let delta = current.failure_rate_pct - previous.failure_rate_pct;
     FailureTrend {
         current_pct: current.failure_rate_pct,

@@ -4,13 +4,13 @@
 //! The service is wired with test doubles implementing the port traits.
 
 use chrono::{NaiveDate, TimeZone, Utc};
+use reporting::application::ports::ReportStore;
 use reporting::application::report_service::ReportService;
 use reporting::domain::model::*;
 use reporting::infrastructure::persistence::in_memory::{
     InMemoryReportStore, InMemoryTransactionRepository, StubAccountClient,
 };
 use rust_decimal_macros::dec;
-use reporting::application::ports::ReportStore;
 
 fn make_tx(
     id: &str,
@@ -52,8 +52,22 @@ fn build_service(transactions: Vec<Transaction>) -> ReportService {
 #[tokio::test]
 async fn period_report_returns_correct_volume() {
     let txs = vec![
-        make_tx("1", "acc-a", 100.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-10"),
-        make_tx("2", "acc-a", 200.0, TransactionType::Deposit,    TransactionStatus::Completed, "2024-01-15"),
+        make_tx(
+            "1",
+            "acc-a",
+            100.0,
+            TransactionType::Withdrawal,
+            TransactionStatus::Completed,
+            "2024-01-10",
+        ),
+        make_tx(
+            "2",
+            "acc-a",
+            200.0,
+            TransactionType::Deposit,
+            TransactionStatus::Completed,
+            "2024-01-15",
+        ),
     ];
     let service = build_service(txs);
 
@@ -81,7 +95,10 @@ async fn period_report_returns_error_when_no_data() {
         .await;
 
     assert!(result.is_err());
-    assert!(matches!(result.unwrap_err(), reporting::domain::error::ReportingError::NoData));
+    assert!(matches!(
+        result.unwrap_err(),
+        reporting::domain::error::ReportingError::NoData
+    ));
 }
 
 #[tokio::test]
@@ -105,15 +122,20 @@ async fn period_report_returns_error_for_invalid_period() {
 #[tokio::test]
 async fn period_report_uses_cache_on_second_call() {
     let store = InMemoryReportStore::new();
-    let txs = vec![
-        make_tx("1", "acc-a", 100.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-10"),
-    ];
+    let txs = vec![make_tx(
+        "1",
+        "acc-a",
+        100.0,
+        TransactionType::Withdrawal,
+        TransactionStatus::Completed,
+        "2024-01-10",
+    )];
     let repo = InMemoryTransactionRepository::new(txs);
     let client = StubAccountClient::with_balance(dec!(1000.00), Currency::Eur);
     let service = ReportService::new(repo, client, store.clone());
 
     let start = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
-    let end   = NaiveDate::from_ymd_opt(2024, 1, 31).unwrap();
+    let end = NaiveDate::from_ymd_opt(2024, 1, 31).unwrap();
 
     // First call — computes and caches
     let first = service.generate_period_report(start, end).await.unwrap();
@@ -133,9 +155,30 @@ async fn period_report_uses_cache_on_second_call() {
 #[tokio::test]
 async fn daily_breakdown_groups_transactions_by_day() {
     let txs = vec![
-        make_tx("1", "acc-a", 100.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-01"),
-        make_tx("2", "acc-a", 200.0, TransactionType::Deposit,    TransactionStatus::Completed, "2024-01-01"),
-        make_tx("3", "acc-b", 50.0,  TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-03"),
+        make_tx(
+            "1",
+            "acc-a",
+            100.0,
+            TransactionType::Withdrawal,
+            TransactionStatus::Completed,
+            "2024-01-01",
+        ),
+        make_tx(
+            "2",
+            "acc-a",
+            200.0,
+            TransactionType::Deposit,
+            TransactionStatus::Completed,
+            "2024-01-01",
+        ),
+        make_tx(
+            "3",
+            "acc-b",
+            50.0,
+            TransactionType::Withdrawal,
+            TransactionStatus::Completed,
+            "2024-01-03",
+        ),
     ];
     let service = build_service(txs);
 
@@ -158,8 +201,26 @@ async fn daily_breakdown_groups_transactions_by_day() {
 #[tokio::test]
 async fn account_report_returns_top_n_accounts() {
     let txs: Vec<Transaction> = (0..5)
-        .map(|i| make_tx(&format!("tx-a-{i}"), "acc-a", 100.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-10"))
-        .chain((0..2).map(|i| make_tx(&format!("tx-b-{i}"), "acc-b", 100.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-10")))
+        .map(|i| {
+            make_tx(
+                &format!("tx-a-{i}"),
+                "acc-a",
+                100.0,
+                TransactionType::Withdrawal,
+                TransactionStatus::Completed,
+                "2024-01-10",
+            )
+        })
+        .chain((0..2).map(|i| {
+            make_tx(
+                &format!("tx-b-{i}"),
+                "acc-b",
+                100.0,
+                TransactionType::Withdrawal,
+                TransactionStatus::Completed,
+                "2024-01-10",
+            )
+        }))
         .collect();
 
     let service = build_service(txs);
@@ -183,9 +244,30 @@ async fn account_report_returns_top_n_accounts() {
 #[tokio::test]
 async fn transaction_count_returns_total_in_store() {
     let txs = vec![
-        make_tx("1", "acc-a", 100.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-01"),
-        make_tx("2", "acc-a", 200.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-02"),
-        make_tx("3", "acc-a", 300.0, TransactionType::Withdrawal, TransactionStatus::Failed,    "2024-01-03"),
+        make_tx(
+            "1",
+            "acc-a",
+            100.0,
+            TransactionType::Withdrawal,
+            TransactionStatus::Completed,
+            "2024-01-01",
+        ),
+        make_tx(
+            "2",
+            "acc-a",
+            200.0,
+            TransactionType::Withdrawal,
+            TransactionStatus::Completed,
+            "2024-01-02",
+        ),
+        make_tx(
+            "3",
+            "acc-a",
+            300.0,
+            TransactionType::Withdrawal,
+            TransactionStatus::Failed,
+            "2024-01-03",
+        ),
     ];
     let service = build_service(txs);
 

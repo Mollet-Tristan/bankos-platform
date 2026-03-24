@@ -23,10 +23,12 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
-use comfy_table::{Table, Cell, Color, Attribute};
+use comfy_table::{Attribute, Cell, Color, Table};
 use reporting::application::report_service::ReportService;
 use reporting::infrastructure::http::HttpAccountClient;
-use reporting::infrastructure::persistence::{SqliteDb, SqliteReportStore, SqliteTransactionRepository};
+use reporting::infrastructure::persistence::{
+    SqliteDb, SqliteReportStore, SqliteTransactionRepository,
+};
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
@@ -49,7 +51,11 @@ struct Cli {
     db_path: String,
 
     /// Account Service URL (for live balance queries)
-    #[arg(long, env = "ACCOUNT_SERVICE_URL", default_value = "http://localhost:8081")]
+    #[arg(
+        long,
+        env = "ACCOUNT_SERVICE_URL",
+        default_value = "http://localhost:8081"
+    )]
     account_service_url: String,
 
     /// Bearer token for authenticated Account Service calls
@@ -153,18 +159,25 @@ async fn main() -> Result<()> {
             render_account_summaries(&accounts);
         }
 
-        Commands::Trend { current_start, current_end, prev_start, prev_end } => {
-            let trend = service.generate_failure_trend(
-                parse_date(&current_start)?,
-                parse_date(&current_end)?,
-                parse_date(&prev_start)?,
-                parse_date(&prev_end)?,
-            ).await?;
+        Commands::Trend {
+            current_start,
+            current_end,
+            prev_start,
+            prev_end,
+        } => {
+            let trend = service
+                .generate_failure_trend(
+                    parse_date(&current_start)?,
+                    parse_date(&current_end)?,
+                    parse_date(&prev_start)?,
+                    parse_date(&prev_end)?,
+                )
+                .await?;
 
             let direction_str = match trend.direction {
                 reporting::domain::aggregation::TrendDirection::Better => "↓ Better".green(),
                 reporting::domain::aggregation::TrendDirection::Stable => "→ Stable".yellow(),
-                reporting::domain::aggregation::TrendDirection::Worse  => "↑ Worse".red(),
+                reporting::domain::aggregation::TrendDirection::Worse => "↑ Worse".red(),
             };
 
             println!("\n{}", "── Failure Rate Trend ──────────────────".bold());
@@ -193,7 +206,10 @@ async fn main() -> Result<()> {
 // ── Rendering helpers ─────────────────────────────────────────────────────────
 
 fn render_period_summary(s: &reporting::domain::model::PeriodSummary) {
-    println!("\n{}", format!("── Period Report: {} ──", s.period).bold().cyan());
+    println!(
+        "\n{}",
+        format!("── Period Report: {} ──", s.period).bold().cyan()
+    );
 
     let mut table = Table::new();
     table.set_header(vec![
@@ -201,30 +217,43 @@ fn render_period_summary(s: &reporting::domain::model::PeriodSummary) {
         Cell::new("Value").add_attribute(Attribute::Bold),
     ]);
 
-    let failure_color = if s.failure_rate_pct > 5.0 { Color::Red } else { Color::Green };
+    let failure_color = if s.failure_rate_pct > 5.0 {
+        Color::Red
+    } else {
+        Color::Green
+    };
 
-    table.add_row(vec!["Completed transactions", &s.total_completed.to_string()]);
-    table.add_row(vec!["Failed transactions",    &s.total_failed.to_string()]);
-    table.add_row(vec!["Compensated",            &s.total_compensated.to_string()]);
-    table.add_row(vec!["Total volume",           &s.total_volume.to_string()]);
-    table.add_row(vec!["Withdrawals",            &s.total_withdrawals.to_string()]);
-    table.add_row(vec!["Deposits",               &s.total_deposits.to_string()]);
-    table.add_row(vec!["Transfers",              &s.total_transfers.to_string()]);
-    table.add_row(vec!["Average transaction",    &s.average_transaction.to_string()]);
     table.add_row(vec![
-        "Failure rate",
-        &format!("{:.2}%", s.failure_rate_pct),
+        "Completed transactions",
+        &s.total_completed.to_string(),
     ]);
+    table.add_row(vec!["Failed transactions", &s.total_failed.to_string()]);
+    table.add_row(vec!["Compensated", &s.total_compensated.to_string()]);
+    table.add_row(vec!["Total volume", &s.total_volume.to_string()]);
+    table.add_row(vec!["Withdrawals", &s.total_withdrawals.to_string()]);
+    table.add_row(vec!["Deposits", &s.total_deposits.to_string()]);
+    table.add_row(vec!["Transfers", &s.total_transfers.to_string()]);
+    table.add_row(vec![
+        "Average transaction",
+        &s.average_transaction.to_string(),
+    ]);
+    table.add_row(vec!["Failure rate", &format!("{:.2}%", s.failure_rate_pct)]);
 
     if let Some(peak) = &s.peak_day {
-        table.add_row(vec!["Peak day", &format!("{} ({} txs)", peak, s.peak_day_count)]);
+        table.add_row(vec![
+            "Peak day",
+            &format!("{} ({} txs)", peak, s.peak_day_count),
+        ]);
     }
 
     println!("{table}");
 }
 
 fn render_daily_breakdown(days: &[reporting::domain::model::DailySummary]) {
-    println!("\n{}", "── Daily Breakdown ─────────────────────".bold().cyan());
+    println!(
+        "\n{}",
+        "── Daily Breakdown ─────────────────────".bold().cyan()
+    );
     let mut table = Table::new();
     table.set_header(vec!["Date", "Completed", "Failed", "Volume"]);
 
@@ -240,9 +269,18 @@ fn render_daily_breakdown(days: &[reporting::domain::model::DailySummary]) {
 }
 
 fn render_account_summaries(accounts: &[reporting::domain::model::AccountSummary]) {
-    println!("\n{}", "── Top Accounts by Activity ────────────".bold().cyan());
+    println!(
+        "\n{}",
+        "── Top Accounts by Activity ────────────".bold().cyan()
+    );
     let mut table = Table::new();
-    table.set_header(vec!["Account ID", "Transactions", "Debited", "Credited", "Net Flow"]);
+    table.set_header(vec![
+        "Account ID",
+        "Transactions",
+        "Debited",
+        "Credited",
+        "Net Flow",
+    ]);
 
     for acc in accounts {
         let net_str = if acc.net_flow >= rust_decimal::Decimal::ZERO {

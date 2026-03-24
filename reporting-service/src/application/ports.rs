@@ -35,10 +35,7 @@ pub trait TransactionRepository: Send + Sync {
     ) -> Result<Vec<Transaction>, ReportingError>;
 
     /// Fetch transactions for a specific account.
-    async fn find_by_account(
-        &self,
-        account_id: &str,
-    ) -> Result<Vec<Transaction>, ReportingError>;
+    async fn find_by_account(&self, account_id: &str) -> Result<Vec<Transaction>, ReportingError>;
 
     /// Total number of stored transactions.
     async fn count(&self) -> Result<u64, ReportingError>;
@@ -58,10 +55,7 @@ pub trait AccountClient: Send + Sync {
 /// Implementation: `SqliteReportStore`
 #[async_trait]
 pub trait ReportStore: Send + Sync {
-    async fn save_period_summary(
-        &self,
-        summary: &PeriodSummary,
-    ) -> Result<(), ReportingError>;
+    async fn save_period_summary(&self, summary: &PeriodSummary) -> Result<(), ReportingError>;
 
     async fn load_period_summary(
         &self,

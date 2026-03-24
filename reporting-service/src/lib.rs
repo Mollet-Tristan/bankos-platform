@@ -39,6 +39,6 @@
 //! - **Embeddable**: the lib can be compiled to WASM for browser-side analytics
 //! - **Portfolio signal**: demonstrates polyglot capability
 
-pub mod domain;
 pub mod application;
+pub mod domain;
 pub mod infrastructure;

@@ -49,10 +49,7 @@ impl TransactionRepository for InMemoryTransactionRepository {
             .collect())
     }
 
-    async fn find_by_account(
-        &self,
-        account_id: &str,
-    ) -> Result<Vec<Transaction>, ReportingError> {
+    async fn find_by_account(&self, account_id: &str) -> Result<Vec<Transaction>, ReportingError> {
         Ok(self
             .transactions
             .iter()

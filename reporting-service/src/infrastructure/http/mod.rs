@@ -28,7 +28,11 @@ impl HttpAccountClient {
             .build()
             .expect("Failed to build HTTP client");
 
-        Self { client, base_url, token }
+        Self {
+            client,
+            base_url,
+            token,
+        }
     }
 }
 
@@ -60,9 +64,10 @@ impl AccountClient for HttpAccountClient {
             req = req.bearer_auth(token);
         }
 
-        let response = req.send().await.map_err(|e| {
-            ReportingError::Http(HttpError::RequestFailed(e.to_string()))
-        })?;
+        let response = req
+            .send()
+            .await
+            .map_err(|e| ReportingError::Http(HttpError::RequestFailed(e.to_string())))?;
 
         if !response.status().is_success() {
             return Err(ReportingError::Http(HttpError::UnexpectedStatus {
@@ -71,9 +76,10 @@ impl AccountClient for HttpAccountClient {
             }));
         }
 
-        let body: BalanceResponse = response.json().await.map_err(|e| {
-            ReportingError::Http(HttpError::RequestFailed(e.to_string()))
-        })?;
+        let body: BalanceResponse = response
+            .json()
+            .await
+            .map_err(|e| ReportingError::Http(HttpError::RequestFailed(e.to_string())))?;
 
         let amount = body.balance.parse::<Decimal>().map_err(|e| {
             ReportingError::Http(HttpError::RequestFailed(format!("Invalid decimal: {}", e)))
@@ -83,9 +89,12 @@ impl AccountClient for HttpAccountClient {
             "EUR" => Currency::Eur,
             "USD" => Currency::Usd,
             "GBP" => Currency::Gbp,
-            other => return Err(ReportingError::Http(HttpError::RequestFailed(
-                format!("Unknown currency: {}", other),
-            ))),
+            other => {
+                return Err(ReportingError::Http(HttpError::RequestFailed(format!(
+                    "Unknown currency: {}",
+                    other
+                ))))
+            }
         };
 
         Ok(Money::new(amount, currency))
@@ -99,9 +108,10 @@ impl AccountClient for HttpAccountClient {
             req = req.bearer_auth(token);
         }
 
-        let response = req.send().await.map_err(|e| {
-            ReportingError::Http(HttpError::RequestFailed(e.to_string()))
-        })?;
+        let response = req
+            .send()
+            .await
+            .map_err(|e| ReportingError::Http(HttpError::RequestFailed(e.to_string())))?;
 
         if !response.status().is_success() {
             return Err(ReportingError::Http(HttpError::UnexpectedStatus {
@@ -110,9 +120,10 @@ impl AccountClient for HttpAccountClient {
             }));
         }
 
-        let body: AccountListResponse = response.json().await.map_err(|e| {
-            ReportingError::Http(HttpError::RequestFailed(e.to_string()))
-        })?;
+        let body: AccountListResponse = response
+            .json()
+            .await
+            .map_err(|e| ReportingError::Http(HttpError::RequestFailed(e.to_string())))?;
 
         Ok(body.content.into_iter().map(|a| a.id).collect())
     }

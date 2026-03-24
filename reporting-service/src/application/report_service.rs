@@ -33,7 +33,11 @@ impl ReportService {
         account_client: Arc<dyn AccountClient>,
         report_store: Arc<dyn ReportStore>,
     ) -> Self {
-        Self { transactions, account_client, report_store }
+        Self {
+            transactions,
+            account_client,
+            report_store,
+        }
     }
 
     /// Generate a full period report and persist it.
@@ -42,8 +46,7 @@ impl ReportService {
         start: NaiveDate,
         end: NaiveDate,
     ) -> Result<PeriodSummary, ReportingError> {
-        let period = Period::new(start, end)
-            .map_err(ReportingError::InvalidPeriod)?;
+        let period = Period::new(start, end).map_err(ReportingError::InvalidPeriod)?;
 
         info!("Generating period report for {}", period);
 
@@ -75,8 +78,7 @@ impl ReportService {
         start: NaiveDate,
         end: NaiveDate,
     ) -> Result<Vec<DailySummary>, ReportingError> {
-        let period = Period::new(start, end)
-            .map_err(ReportingError::InvalidPeriod)?;
+        let period = Period::new(start, end).map_err(ReportingError::InvalidPeriod)?;
 
         let transactions = self.transactions.find_by_period(start, end).await?;
 
@@ -113,17 +115,19 @@ impl ReportService {
         previous_start: NaiveDate,
         previous_end: NaiveDate,
     ) -> Result<FailureTrend, ReportingError> {
-        let current_txs = self.transactions
+        let current_txs = self
+            .transactions
             .find_by_period(current_start, current_end)
             .await?;
-        let previous_txs = self.transactions
+        let previous_txs = self
+            .transactions
             .find_by_period(previous_start, previous_end)
             .await?;
 
-        let current_period = Period::new(current_start, current_end)
-            .map_err(ReportingError::InvalidPeriod)?;
-        let previous_period = Period::new(previous_start, previous_end)
-            .map_err(ReportingError::InvalidPeriod)?;
+        let current_period =
+            Period::new(current_start, current_end).map_err(ReportingError::InvalidPeriod)?;
+        let previous_period =
+            Period::new(previous_start, previous_end).map_err(ReportingError::InvalidPeriod)?;
 
         let current = compute_period_summary(&current_txs, &current_period);
         let previous = compute_period_summary(&previous_txs, &previous_period);

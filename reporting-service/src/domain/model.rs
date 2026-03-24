@@ -3,7 +3,7 @@
 //! These types are designed for computation, not persistence.
 //! Serde derives enable JSON deserialization from Kafka events.
 
-use chrono::{DateTime, Utc, NaiveDate};
+use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -33,13 +33,19 @@ impl Money {
     }
 
     pub fn zero(currency: Currency) -> Self {
-        Self { amount: Decimal::ZERO, currency }
+        Self {
+            amount: Decimal::ZERO,
+            currency,
+        }
     }
 
     /// Add two Money values. Panics if currencies differ.
     /// Use `checked_add` for safe addition across currencies.
     pub fn add(&self, other: &Money) -> Self {
-        assert_eq!(self.currency, other.currency, "Cannot add different currencies");
+        assert_eq!(
+            self.currency, other.currency,
+            "Cannot add different currencies"
+        );
         Money::new(self.amount + other.amount, self.currency.clone())
     }
 }

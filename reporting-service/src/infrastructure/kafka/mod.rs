@@ -135,18 +135,28 @@ fn process_message(payload: &[u8]) -> Result<Option<Transaction>, ReportingError
     };
 
     let transaction_id = raw.transaction_id.ok_or_else(|| {
-        ReportingError::Kafka(KafkaError::DeserializationFailed("missing transactionId".into()))
+        ReportingError::Kafka(KafkaError::DeserializationFailed(
+            "missing transactionId".into(),
+        ))
     })?;
 
     let source_account_id = raw.source_account_id.ok_or_else(|| {
-        ReportingError::Kafka(KafkaError::DeserializationFailed("missing sourceAccountId".into()))
+        ReportingError::Kafka(KafkaError::DeserializationFailed(
+            "missing sourceAccountId".into(),
+        ))
     })?;
 
-    let amount_val = raw.amount.and_then(|v| {
-        v.as_str()
-            .and_then(|s| s.parse::<rust_decimal::Decimal>().ok())
-            .or_else(|| v.as_f64().map(|f| rust_decimal::Decimal::try_from(f).unwrap_or_default()))
-    }).unwrap_or_default();
+    let amount_val = raw
+        .amount
+        .and_then(|v| {
+            v.as_str()
+                .and_then(|s| s.parse::<rust_decimal::Decimal>().ok())
+                .or_else(|| {
+                    v.as_f64()
+                        .map(|f| rust_decimal::Decimal::try_from(f).unwrap_or_default())
+                })
+        })
+        .unwrap_or_default();
 
     let currency = match raw.currency.as_deref() {
         Some("EUR") => Currency::Eur,
@@ -162,7 +172,8 @@ fn process_message(payload: &[u8]) -> Result<Option<Transaction>, ReportingError
         _ => TransactionType::Withdrawal,
     };
 
-    let occurred_at = raw.occurred_at
+    let occurred_at = raw
+        .occurred_at
         .as_deref()
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&chrono::Utc))

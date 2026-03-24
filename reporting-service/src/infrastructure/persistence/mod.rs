@@ -17,13 +17,12 @@ pub mod in_memory;
 /// A production deployment would use PostgreSQL (read replica of
 /// transaction-service DB) or a dedicated time-series store (TimescaleDB).
 /// SQLite is appropriate for a self-contained CLI portfolio demo.
-
 use crate::application::ports::{ReportStore, TransactionRepository};
 use crate::domain::error::{PersistenceError, ReportingError};
 use crate::domain::model::*;
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde_json;
 use std::sync::Mutex;
 
@@ -37,10 +36,13 @@ pub struct SqliteDb {
 
 impl SqliteDb {
     pub fn open(path: &str) -> Result<Self, ReportingError> {
-        let conn = Connection::open(path)
-            .map_err(|e| ReportingError::Persistence(PersistenceError::SqliteError(e.to_string())))?;
+        let conn = Connection::open(path).map_err(|e| {
+            ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))
+        })?;
 
-        let db = Self { conn: Mutex::new(conn) };
+        let db = Self {
+            conn: Mutex::new(conn),
+        };
         db.run_migrations()?;
         Ok(db)
     }
@@ -51,10 +53,9 @@ impl SqliteDb {
 
     fn run_migrations(&self) -> Result<(), ReportingError> {
         let conn = self.conn.lock().unwrap();
-        conn.execute_batch(MIGRATIONS)
-            .map_err(|e| ReportingError::Persistence(
-                PersistenceError::MigrationFailed(e.to_string())
-            ))
+        conn.execute_batch(MIGRATIONS).map_err(|e| {
+            ReportingError::Persistence(PersistenceError::MigrationFailed(e.to_string()))
+        })
     }
 }
 
@@ -133,7 +134,9 @@ impl TransactionRepository for SqliteTransactionRepository {
                  WHERE date(occurred_at) >= ?1 AND date(occurred_at) <= ?2
                  ORDER BY occurred_at ASC",
             )
-            .map_err(|e| ReportingError::Persistence(PersistenceError::SqliteError(e.to_string())))?;
+            .map_err(|e| {
+                ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))
+            })?;
 
         let rows = stmt
             .query_map(params![start.to_string(), end.to_string()], |row| {
@@ -148,17 +151,17 @@ impl TransactionRepository for SqliteTransactionRepository {
                     occurred_at: row.get(7)?,
                 })
             })
-            .map_err(|e| ReportingError::Persistence(PersistenceError::SqliteError(e.to_string())))?;
+            .map_err(|e| {
+                ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))
+            })?;
 
-        let transactions = rows.filter_map(|r| r.ok().and_then(|row| row.into_transaction().ok()))
+        let transactions = rows
+            .filter_map(|r| r.ok().and_then(|row| row.into_transaction().ok()))
             .collect::<Vec<_>>();
         Ok(transactions)
     }
 
-    async fn find_by_account(
-        &self,
-        account_id: &str,
-    ) -> Result<Vec<Transaction>, ReportingError> {
+    async fn find_by_account(&self, account_id: &str) -> Result<Vec<Transaction>, ReportingError> {
         let conn = self.db.conn.lock().unwrap();
         let mut stmt = conn
             .prepare(
@@ -168,7 +171,9 @@ impl TransactionRepository for SqliteTransactionRepository {
                  WHERE source_account_id = ?1
                  ORDER BY occurred_at DESC",
             )
-            .map_err(|e| ReportingError::Persistence(PersistenceError::SqliteError(e.to_string())))?;
+            .map_err(|e| {
+                ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))
+            })?;
 
         let rows = stmt
             .query_map(params![account_id], |row| {
@@ -183,9 +188,12 @@ impl TransactionRepository for SqliteTransactionRepository {
                     occurred_at: row.get(7)?,
                 })
             })
-            .map_err(|e| ReportingError::Persistence(PersistenceError::SqliteError(e.to_string())))?;
+            .map_err(|e| {
+                ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))
+            })?;
 
-        let transactions = rows.filter_map(|r| r.ok().and_then(|row| row.into_transaction().ok()))
+        let transactions = rows
+            .filter_map(|r| r.ok().and_then(|row| row.into_transaction().ok()))
             .collect::<Vec<_>>();
         Ok(transactions)
     }
@@ -194,7 +202,9 @@ impl TransactionRepository for SqliteTransactionRepository {
         let conn = self.db.conn.lock().unwrap();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM transactions", [], |row| row.get(0))
-            .map_err(|e| ReportingError::Persistence(PersistenceError::SqliteError(e.to_string())))?;
+            .map_err(|e| {
+                ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))
+            })?;
         Ok(count as u64)
     }
 }
@@ -213,10 +223,7 @@ impl SqliteReportStore {
 
 #[async_trait]
 impl ReportStore for SqliteReportStore {
-    async fn save_period_summary(
-        &self,
-        summary: &PeriodSummary,
-    ) -> Result<(), ReportingError> {
+    async fn save_period_summary(&self, summary: &PeriodSummary) -> Result<(), ReportingError> {
         let conn = self.db.conn.lock().unwrap();
         let data = serde_json::to_string(summary).map_err(|e| {
             ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))
@@ -254,7 +261,9 @@ impl ReportStore for SqliteReportStore {
                 Ok(Some(summary))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))),
+            Err(e) => Err(ReportingError::Persistence(PersistenceError::SqliteError(
+                e.to_string(),
+            ))),
         }
     }
 
@@ -262,16 +271,21 @@ impl ReportStore for SqliteReportStore {
         let conn = self.db.conn.lock().unwrap();
         let mut stmt = conn
             .prepare("SELECT data FROM period_summaries ORDER BY period_start DESC")
-            .map_err(|e| ReportingError::Persistence(PersistenceError::SqliteError(e.to_string())))?;
+            .map_err(|e| {
+                ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))
+            })?;
 
         let rows = stmt
             .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|e| ReportingError::Persistence(PersistenceError::SqliteError(e.to_string())))?;
+            .map_err(|e| {
+                ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))
+            })?;
 
         rows.filter_map(|r| r.ok())
             .map(|data| {
-                serde_json::from_str::<PeriodSummary>(&data)
-                    .map_err(|e| ReportingError::Persistence(PersistenceError::SqliteError(e.to_string())))
+                serde_json::from_str::<PeriodSummary>(&data).map_err(|e| {
+                    ReportingError::Persistence(PersistenceError::SqliteError(e.to_string()))
+                })
             })
             .collect()
     }
@@ -292,7 +306,9 @@ struct RawRow {
 
 impl RawRow {
     fn into_transaction(self) -> Result<Transaction, String> {
-        let amount = self.amount.parse::<rust_decimal::Decimal>()
+        let amount = self
+            .amount
+            .parse::<rust_decimal::Decimal>()
             .map_err(|e| e.to_string())?;
         let currency = match self.currency.as_str() {
             "EUR" => Currency::Eur,
@@ -302,13 +318,13 @@ impl RawRow {
         };
         let transaction_type = match self.transaction_type.as_str() {
             "WITHDRAWAL" => TransactionType::Withdrawal,
-            "DEPOSIT"    => TransactionType::Deposit,
-            "TRANSFER"   => TransactionType::Transfer,
+            "DEPOSIT" => TransactionType::Deposit,
+            "TRANSFER" => TransactionType::Transfer,
             other => return Err(format!("Unknown type: {}", other)),
         };
         let status = match self.status.as_str() {
-            "COMPLETED"   => TransactionStatus::Completed,
-            "FAILED"      => TransactionStatus::Failed,
+            "COMPLETED" => TransactionStatus::Completed,
+            "FAILED" => TransactionStatus::Failed,
             "COMPENSATED" => TransactionStatus::Compensated,
             other => return Err(format!("Unknown status: {}", other)),
         };

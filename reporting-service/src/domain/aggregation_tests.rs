@@ -4,10 +4,14 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::aggregation::{
+        compute_failure_trend, compute_period_summary, find_peak_day, TrendDirection,
+    };
+    use crate::domain::model::{
+        Currency, Money, Period, PeriodSummary, Transaction, TransactionStatus, TransactionType,
+    };
     use chrono::{NaiveDate, TimeZone, Utc};
     use rust_decimal_macros::dec;
-    use crate::domain::aggregation::{compute_failure_trend, compute_period_summary, find_peak_day, TrendDirection};
-    use crate::domain::model::{Currency, Money, Period, PeriodSummary, Transaction, TransactionStatus, TransactionType};
 
     fn tx(
         id: &str,
@@ -55,8 +59,20 @@ mod tests {
     #[test]
     fn only_failed_txs_gives_100_pct_failure_rate() {
         let txs = vec![
-            tx("1", 100.0, TransactionType::Withdrawal, TransactionStatus::Failed, "2024-01-10"),
-            tx("2", 200.0, TransactionType::Withdrawal, TransactionStatus::Failed, "2024-01-11"),
+            tx(
+                "1",
+                100.0,
+                TransactionType::Withdrawal,
+                TransactionStatus::Failed,
+                "2024-01-10",
+            ),
+            tx(
+                "2",
+                200.0,
+                TransactionType::Withdrawal,
+                TransactionStatus::Failed,
+                "2024-01-11",
+            ),
         ];
         let summary = compute_period_summary(&txs, &jan());
         assert_eq!(summary.total_completed, 0);
@@ -69,10 +85,34 @@ mod tests {
     #[test]
     fn peak_day_is_day_with_most_completed_txs() {
         let txs = vec![
-            tx("1", 100.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-05"),
-            tx("2", 100.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-10"),
-            tx("3", 100.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-10"),
-            tx("4", 100.0, TransactionType::Withdrawal, TransactionStatus::Completed, "2024-01-10"),
+            tx(
+                "1",
+                100.0,
+                TransactionType::Withdrawal,
+                TransactionStatus::Completed,
+                "2024-01-05",
+            ),
+            tx(
+                "2",
+                100.0,
+                TransactionType::Withdrawal,
+                TransactionStatus::Completed,
+                "2024-01-10",
+            ),
+            tx(
+                "3",
+                100.0,
+                TransactionType::Withdrawal,
+                TransactionStatus::Completed,
+                "2024-01-10",
+            ),
+            tx(
+                "4",
+                100.0,
+                TransactionType::Withdrawal,
+                TransactionStatus::Completed,
+                "2024-01-10",
+            ),
         ];
         let summary = compute_period_summary(&txs, &jan());
         assert_eq!(
@@ -105,7 +145,10 @@ mod tests {
             peak_day: None,
             peak_day_count: 0,
         };
-        let previous = PeriodSummary { failure_rate_pct: 4.5, ..current.clone() };
+        let previous = PeriodSummary {
+            failure_rate_pct: 4.5,
+            ..current.clone()
+        };
 
         let trend = compute_failure_trend(&current, &previous);
         assert_eq!(trend.direction, TrendDirection::Stable);

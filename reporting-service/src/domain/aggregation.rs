@@ -13,7 +13,6 @@
 //! These could be methods on the types, but free functions keep the
 //! domain model types as simple data holders and the computation
 //! logic separate — easier to reason about independently.
-
 use crate::domain::model::*;
 use chrono::NaiveDate;
 use rust_decimal::Decimal;

@@ -1,0 +1,79 @@
+[package]
+name = "reporting-service"
+version = "0.1.0"
+edition = "2021"
+description = "BankOS reporting CLI — transaction analytics and portfolio statistics"
+authors = ["Tristan <zordym@github>"]
+
+[[bin]]
+name = "bankos-report"
+path = "src/bin/main.rs"
+
+[[bin]]
+name = "bankos-consumer"
+path = "src/bin/consumer.rs"
+
+[lib]
+name = "reporting"
+path = "src/lib.rs"
+
+[dependencies]
+# CLI argument parsing
+clap = { version = "4.4", features = ["derive", "env"] }
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+async-trait = "0.1.89"
+
+
+# Serialization / Deserialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Kafka consumer
+rdkafka = { version = "0.36", features = ["cmake-build", "ssl"] }
+
+# HTTP client — calls Account Service for balance snapshots
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling — idiomatic Rust error propagation
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Decimal arithmetic for financial calculations (no float rounding errors)
+rust_decimal = { version = "1.33", features = ["serde-with-str"] }
+rust_decimal_macros = "1.33"
+
+# Terminal output formatting
+comfy-table = "7.1"
+indicatif = "0.17"    # progress bars for long-running aggregations
+colored = "2.1"
+
+# Persistence (SQLite for local report storage)
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# Configuration
+config = "0.14"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1.22.0", features = ["v4"] }
+log = "0.4.29"
+
+[dev-dependencies]
+# Test utilities
+assert_matches = "1.5"
+tempfile = "3.9"
+tokio-test = "0.4"
+
+[profile.release]
+# Optimise for size — this binary is embedded in CI pipelines
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

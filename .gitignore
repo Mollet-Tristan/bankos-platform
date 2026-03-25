@@ -1,7 +1,6 @@
 # ── Gradle (services Kotlin) ─────────────────────────
 .gradle/
 build/
-*.jar
 *.war
 *.class
 out/

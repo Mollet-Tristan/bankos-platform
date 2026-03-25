@@ -1,0 +1,152 @@
+# ============================================================
+# BankOS Platform — Local Infrastructure
+# ============================================================
+# Compatible with: podman compose (podman 4.4+)
+#
+# Usage:
+#   just infra-up      → start everything
+#   just infra-down    → stop
+#   just infra-reset   → wipe all data (volumes)
+#
+# Note on Podman:
+#   First run requires initializing the Podman machine (macOS):
+#     podman machine init
+#     podman machine start
+#
+# Exposed ports:
+#   Kafka            → localhost:9092 (internal) / localhost:9094 (host)
+#   Kafka UI         → http://localhost:9090
+#   Postgres accounts      → localhost:5432
+#   Postgres transactions  → localhost:5433
+#   Postgres notifications → localhost:5434
+#   Redis            → localhost:6379
+#   Keycloak         → http://localhost:8180
+#   Mailpit SMTP     → localhost:1025
+#   Mailpit UI       → http://localhost:8025
+
+version: "3.8"
+
+services:
+
+  # ── Kafka (KRaft — no Zookeeper) ─────────────────────────────────────────────
+  kafka:
+    image: docker.io/bitnami/kafka:3.6
+    container_name: bankos-kafka
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_NUM_PARTITIONS: 3
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: 1
+      # Topics pre-created at startup
+      KAFKA_CFG_CREATE_TOPICS: "bankos.transaction.events:3:1,bankos.account.events:3:1"
+    volumes:
+      - kafka-data:/bitnami/kafka
+
+  # ── Kafka UI ──────────────────────────────────────────────────────────────────
+  kafka-ui:
+    image: docker.io/provectuslabs/kafka-ui:latest
+    container_name: bankos-kafka-ui
+    ports:
+      - "9090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: bankos-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      - kafka
+
+  # ── PostgreSQL — Account Service ──────────────────────────────────────────────
+  postgres-accounts:
+    image: docker.io/postgres:16-alpine
+    container_name: bankos-postgres-accounts
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: bankos_accounts
+      POSTGRES_USER: bankos
+      POSTGRES_PASSWORD: bankos
+    volumes:
+      - postgres-accounts-data:/var/lib/postgresql/data
+
+  # ── PostgreSQL — Transaction Service ─────────────────────────────────────────
+  postgres-transactions:
+    image: docker.io/postgres:16-alpine
+    container_name: bankos-postgres-transactions
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: bankos_transactions
+      POSTGRES_USER: bankos
+      POSTGRES_PASSWORD: bankos
+    volumes:
+      - postgres-transactions-data:/var/lib/postgresql/data
+
+  # ── PostgreSQL — Notification Service ────────────────────────────────────────
+  postgres-notifications:
+    image: docker.io/postgres:16-alpine
+    container_name: bankos-postgres-notifications
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: bankos_notifications
+      POSTGRES_USER: bankos
+      POSTGRES_PASSWORD: bankos
+    volumes:
+      - postgres-notifications-data:/var/lib/postgresql/data
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: docker.io/redis:7-alpine
+    container_name: bankos-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis-data:/data
+
+  # ── Keycloak ──────────────────────────────────────────────────────────────────
+  # Realm 'bankos' is imported automatically from infra/keycloak/realms/
+  # Pre-configured users: user1, operator1, admin1 (password: password)
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0
+    container_name: bankos-keycloak
+    ports:
+      - "8180:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: dev-file
+      KC_HEALTH_ENABLED: "true"
+    command: start-dev --import-realm
+    volumes:
+      - ./keycloak/realms:/opt/keycloak/data/import:ro
+    depends_on:
+      - postgres-accounts  # just to sequence startup, no actual dependency
+
+  # ── Mailpit (SMTP sink + web UI) ──────────────────────────────────────────────
+  mailpit:
+    image: docker.io/axllent/mailpit:latest
+    container_name: bankos-mailpit
+    ports:
+      - "8025:8025"   # Web UI
+      - "1025:1025"   # SMTP
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+
+volumes:
+  kafka-data:
+  postgres-accounts-data:
+  postgres-transactions-data:
+  postgres-notifications-data:
+  redis-data:

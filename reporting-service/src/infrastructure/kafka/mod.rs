@@ -134,6 +134,10 @@ fn process_message(payload: &[u8]) -> Result<Option<Transaction>, ReportingError
         }
     };
 
+    let event_id = raw.event_id.ok_or_else(|| {
+        ReportingError::Kafka(KafkaError::DeserializationFailed("missing eventId".into()))
+    })?;
+
     let transaction_id = raw.transaction_id.ok_or_else(|| {
         ReportingError::Kafka(KafkaError::DeserializationFailed(
             "missing transactionId".into(),
@@ -178,6 +182,8 @@ fn process_message(payload: &[u8]) -> Result<Option<Transaction>, ReportingError
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&chrono::Utc))
         .unwrap_or_else(chrono::Utc::now);
+
+    info!("eventId={}, eventType={}", event_id, raw.event_type);
 
     Ok(Some(Transaction {
         id: transaction_id,

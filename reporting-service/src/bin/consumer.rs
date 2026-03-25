@@ -89,7 +89,7 @@ async fn main() -> Result<()> {
                 warn!("Failed to persist transaction {}: {}", transaction.id, e);
             } else {
                 count += 1;
-                if count % 100 == 0 {
+                if count.is_multiple_of(100) {
                     info!("Persisted {} transactions", count);
                 }
             }

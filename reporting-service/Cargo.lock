@@ -1523,6 +1523,7 @@ dependencies = [
  "comfy-table",
  "config",
  "indicatif",
+ "log",
  "rdkafka",
  "reqwest",
  "rusqlite",

@@ -23,7 +23,6 @@ use std::collections::HashMap;
 /// Transactions outside the period are ignored (not filtered out —
 /// the caller should pre-filter for performance on large datasets).
 ///
-
 pub fn compute_period_summary(transactions: &[Transaction], period: &Period) -> PeriodSummary {
     let in_period: Vec<&Transaction> = transactions
         .iter()

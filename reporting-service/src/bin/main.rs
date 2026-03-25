@@ -217,7 +217,7 @@ fn render_period_summary(s: &reporting::domain::model::PeriodSummary) {
         Cell::new("Value").add_attribute(Attribute::Bold),
     ]);
 
-    let failure_color = if s.failure_rate_pct > 5.0 {
+    let _failure_color = if s.failure_rate_pct > 5.0 {
         Color::Red
     } else {
         Color::Green

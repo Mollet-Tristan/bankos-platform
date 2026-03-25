@@ -7,7 +7,6 @@ use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use uuid::{uuid, Uuid};
 
 // ── Re-export uuid (used throughout) ─────────────────────────────────────────
 // (add to Cargo.toml: uuid = { version = "1", features = ["v4", "serde"] })
@@ -19,7 +18,6 @@ use uuid::{uuid, Uuid};
 /// Uses `rust_decimal::Decimal` — never `f64` — to avoid floating-point
 /// rounding errors in financial calculations.
 ///
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Money {
     #[serde(with = "rust_decimal::serde::str")]
